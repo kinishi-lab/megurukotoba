@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>めぐることば —答えは循環の中に—</title>
+<meta name="description" content="AIジャーナリングの「今日の小さな宣言」が、輪になって還ってくる。" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+<meta name="theme-color" content="#FAF6F0" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="めぐることば" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #FAF6F0; }
+  #root { min-height: 100vh; }
+</style>
+<!-- React（CDN・ビルド不要） -->
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+/* 保存：ブラウザのlocalStorageを使う（GitHub Pages用アダプタ） */
+window.storage = {
+  async get(key) {
+    const v = localStorage.getItem(key);
+    return v == null ? null : { key, value: v };
+  },
+  async set(key, value) {
+    localStorage.setItem(key, value);
+    return { key, value };
+  },
+  async delete(key) { localStorage.removeItem(key); return { key, deleted: true }; },
+};
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useRef } = React;
+
+/* ============================================================
+   宣言の年表 v3 — カードデッキ / ドラッグ&ドロップ / 全文へ
+   決めるのはAIじゃなく、私。コメントするAIは、いません。
+   ============================================================ */
+
+const C = {
+  bg: "#FAF6F0", card: "#FFFDFA", ink: "#4A4038", sub: "#8A7E72",
+  line: "#E8DFD4", nagi: "#7FA8A0", omoi: "#D9A362", hi: "#D98776",
+  star: "#E5B84B", deep: "#3A5A54",
+};
+
+/* 循環の輪：カードが乗る円の半径と、一枚ぶんの角度（小さいほど丸みが見える） */
+const WHEEL_R = 430;
+const WHEEL_STEP = 20;
+
+/* ---------- Markdownの読み取り（rawも保持） ---------- */
+function parseEntries(raw) {
+  if (!raw) return [];
+  const blocks = ("\n" + raw.replace(/\r\n?/g, "\n"))
+    .split(/\n(?=#\s)/).map((b) => b.trim()).filter((b) => b.length > 40);
+  const out = [];
+  for (const block of blocks) {
+    const lines = block.split("\n");
+    const titleLine = (lines[0] || "").replace(/^#\s*/, "").trim();
+    const segs = titleLine.split(/[｜|]/).map((s) => s.trim()).filter(Boolean);
+    const theme = segs.length > 1 ? segs[segs.length - 1] : segs[0] || "";
+    const dm = block.match(/(\d{4})[年\-\/.](\d{1,2})[月\-\/.](\d{1,2})/);
+    const date = dm ? `${dm[1]}-${String(dm[2]).padStart(2, "0")}-${String(dm[3]).padStart(2, "0")}` : null;
+    const dayM = block.match(/Day\s*(\d{1,3})/i) || block.match(/(\d{1,3})\s*日目/) || block.match(/継続日数[^\d]{0,12}(\d{1,3})/);
+    const day = dayM ? parseInt(dayM[1], 10) : null;
+    const stM = block.match(/状態[\*＊]*[：:]\s*([^\n]+)/);
+    const state = stM ? stM[1].replace(/\*/g, "").trim() : "";
+    let decl = "";
+    const idx = lines.findIndex((l) => l.includes("今日の小さな宣言"));
+    if (idx >= 0) {
+      const got = [];
+      for (let i = idx + 1; i < Math.min(idx + 8, lines.length); i++) {
+        const l = lines[i].trim();
+        if (!l) { if (got.length) break; else continue; }
+        if (/^(#{1,6}\s|---|※|```)/.test(l)) break;
+        got.push(l.replace(/^[>＞]\s*/, "").replace(/\*\*/g, "").replace(/^[「『]|[」』]$/g, "").trim());
+      }
+      decl = got.filter(Boolean).join("\n");
+    }
+    if (decl || date) {
+      out.push({
+        id: `${date || "?"}_${day ?? "?"}_${decl.slice(0, 12)}`,
+        date, day, state, theme, decl,
+        raw: block,          // その日の全文（カードから開ける）
+        level: null, star: false,
+      });
+    }
+  }
+  const seen = new Set();
+  return out.filter((e) => {
+    const k = `${e.date}__${e.decl}`;
+    if (seen.has(k)) return false;
+    seen.add(k); return true;
+  }).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+}
+
+/* ---------- サンプル（架空の例。取り込むと何が起きるかの見本） ---------- */
+const SAMPLE_ROWS = [
+  ["2026-05-28", 8, "少し疲れているけど、落ち着いている朝", "詰め込みすぎた一週間", "今日は、ひとつだけ\n終わらせたらOK"],
+  ["2026-06-02", 13, "眠い。でも席には座れた", "休むことへの罪悪感", "疲れたら、休む。\nそれも予定のうち"],
+  ["2026-06-09", 20, "静かな朝。頭がすっきりしている", "人と比べてしまう癖", "私は、私のペースでいい"],
+  ["2026-06-15", 26, "そわそわ。でも悪くない緊張", "はじめての一歩", "うまくやるより、\nまず、やってみる"],
+];
+const SAMPLE = SAMPLE_ROWS.map(([date, day, state, theme, decl]) => ({
+  id: `${date}_${day}_${decl.slice(0, 12)}`, date, day, state, theme, decl,
+  raw: `# ${theme}\n${date}\n\n## メタ情報\n- 状態：${state}\n\n（これは架空のサンプルです。自分のMarkdownを取り込むと、ここにその日の記録がまるごと表示されます）\n\n> 今日の小さな宣言\n> 「${decl.replace(/\n/g, "")}」`,
+  level: null, star: false,
+}));
+
+/* ---------- 保存 ---------- */
+const KEY = "meguru_kotoba_v1";
+async function save(entries) {
+  try { await window.storage.set(KEY, JSON.stringify(entries)); } catch (e) {}
+}
+async function load() {
+  try { const r = await window.storage.get(KEY); return r ? JSON.parse(r.value) : null; }
+  catch (e) { return null; }
+}
+
+const fmtDate = (d) => {
+  if (!d) return "";
+  const [y, m, dd] = d.split("-");
+  return `${y}年${parseInt(m)}月${parseInt(dd)}日`;
+};
+
+/* 縦書き用：半角の数字・英字を全角へ（「6割」が「の割」に見える問題の対策） */
+const toTate = (s) =>
+  (s || "").replace(/[0-9A-Za-z]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) + 0xfee0));
+
+/* ---------- その日の全文を、静かに表示 ---------- */
+function MdView({ text }) {
+  const lines = (text || "").split("\n");
+  return (
+    <div style={{ fontSize: 13.5, lineHeight: 2 }}>
+      {lines.map((l, i) => {
+        const t = l.trim();
+        if (/^#\s/.test(t)) return <div key={i} style={{ fontSize: 17, fontWeight: 700, margin: "10px 0 6px" }}>{t.replace(/^#\s*/, "")}</div>;
+        if (/^##\s/.test(t)) return <div key={i} style={{ fontSize: 14.5, fontWeight: 700, margin: "16px 0 4px", color: C.deep }}>{t.replace(/^##\s*/, "")}</div>;
+        if (/^###\s/.test(t)) return <div key={i} style={{ fontSize: 13.5, fontWeight: 700, margin: "12px 0 2px" }}>{t.replace(/^###\s*/, "")}</div>;
+        if (/^---+$/.test(t)) return <hr key={i} style={{ border: "none", borderTop: `1px dashed ${C.line}`, margin: "12px 0" }} />;
+        if (/^[>＞]/.test(t)) return <div key={i} style={{ borderLeft: `3px solid ${C.nagi}`, paddingLeft: 10, color: C.deep, fontWeight: 500 }}>{t.replace(/^[>＞]\s*/, "").replace(/\*\*/g, "")}</div>;
+        if (/^```/.test(t)) return null;
+        if (/^[-・]\s/.test(t)) return <div key={i} style={{ paddingLeft: 14 }}>・{t.replace(/^[-・]\s*/, "").replace(/\*\*/g, "")}</div>;
+        if (!t) return <div key={i} style={{ height: 6 }} />;
+        return <div key={i}>{t.replace(/\*\*/g, "")}</div>;
+      })}
+    </div>
+  );
+}
+
+/* ============================================================ */
+function App() {
+  const [entries, setEntries] = useState([]);
+  const [paste, setPaste] = useState("");
+  const [tab, setTab] = useState("in");
+  const [msg, setMsg] = useState("");
+  const [cardIdx, setCardIdx] = useState(0);
+  const [onlyStar, setOnlyStar] = useState(false);
+  const [openId, setOpenId] = useState(null);   // 全文を開いている日
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef(null);
+
+  useEffect(() => {
+    (async () => {
+      const d = await load();
+      if (d && d.length) { setEntries(d); setTab("cards"); }
+    })();
+  }, []);
+
+  const update = (id, patch) => {
+    setEntries((prev) => {
+      const next = prev.map((e) => (e.id === id ? { ...e, ...patch } : e));
+      save(next); return next;
+    });
+  };
+
+  const mergeIn = (text, sourceLabel) => {
+    const parsed = parseEntries(text);
+    if (!parsed.length) { setMsg(`${sourceLabel}から宣言が見つかりませんでした。まとめのMarkdownか確認してみてください。`); return; }
+    setEntries((prev) => {
+      const merged = [...prev];
+      let added = 0;
+      for (const e of parsed) {
+        if (!merged.some((m) => m.date === e.date && m.decl === e.decl)) { merged.push(e); added++; }
+      }
+      merged.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      setMsg(`${added}枚のことばカードができました（全${merged.length}枚）`);
+      save(merged);
+      return merged;
+    });
+    setTab("cards"); setCardIdx(0);
+  };
+
+  const readFiles = async (fileList) => {
+    const files = Array.from(fileList).filter((f) => /\.(md|txt|markdown)$/i.test(f.name) || f.type.startsWith("text"));
+    if (!files.length) { setMsg("Markdown（.md）ファイルを入れてください。"); return; }
+    const texts = await Promise.all(files.map((f) => f.text()));
+    mergeIn(texts.join("\n\n"), `${files.length}個のファイル`);
+  };
+
+  const loadSample = () => { setEntries(SAMPLE); setMsg("サンプル（架空の4枚）を読み込みました"); save(SAMPLE); setTab("cards"); setCardIdx(0); };
+
+  /* ---------- 月の輪とベストの輪 ---------- */
+  const months = useMemo(() => {
+    const s = new Set(entries.map((e) => (e.date || "").slice(0, 7)).filter(Boolean));
+    return Array.from(s).sort();
+  }, [entries]);
+  const [month, setMonth] = useState("");
+  useEffect(() => {
+    if (months.length && (!month || !months.includes(month))) setMonth(months[months.length - 1]);
+  }, [months]);
+  const fmtMonth = (m) => (m ? `${m.slice(0, 4)}年${parseInt(m.slice(5))}月` : "");
+  const moveMonth = (d) => {
+    const i = months.indexOf(month);
+    const ni = i + d;
+    if (ni >= 0 && ni < months.length) { setMonth(months[ni]); setCardIdx(0); }
+  };
+
+  const deck = useMemo(
+    () => (onlyStar
+      ? entries.filter((e) => e.star)
+      : entries.filter((e) => (e.date || "").slice(0, 7) === month)),
+    [entries, onlyStar, month]
+  );
+
+  /* ---------- 保存タブ：書き出し・読み込み・全消し（コピー&ペースト方式） ---------- */
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [showOut, setShowOut] = useState(false);   // 書き出しパネル
+  const [showIn, setShowIn] = useState(false);     // 読み込みパネル
+  const [restoreText, setRestoreText] = useState("");
+  const outRef = useRef(null);
+  const backupJson = () => JSON.stringify({ app: "meguru-kotoba", version: 1, exported: new Date().toISOString(), entries });
+  const copyBackup = async () => {
+    const text = backupJson();
+    try {
+      await navigator.clipboard.writeText(text);
+      setMsg("コピーしました。メモアプリやObsidianに貼って保存してください。");
+    } catch (e) {
+      try {
+        if (outRef.current) { outRef.current.focus(); outRef.current.select(); document.execCommand("copy"); setMsg("コピーしました。メモアプリやObsidianに貼って保存してください。"); }
+      } catch (e2) {
+        setMsg("自動コピーできませんでした。下の欄を長押し（またはCtrl+A）で全選択してコピーしてください。");
+      }
+    }
+  };
+  const restoreFromText = () => {
+    try {
+      const data = JSON.parse(restoreText);
+      const list = Array.isArray(data) ? data : data.entries;
+      if (!Array.isArray(list) || !list.length) throw new Error("empty");
+      const cleaned = list.filter((e) => e && (e.decl || e.date)).map((e) => ({ level: null, star: false, raw: "", ...e }));
+      cleaned.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      setEntries(cleaned); save(cleaned);
+      setMsg(`バックアップから ${cleaned.length}枚 を読み込みました`);
+      setRestoreText(""); setShowIn(false);
+      setTab("cards"); setCardIdx(0);
+    } catch (e) {
+      setMsg("読み込めませんでした。「めぐることば」で書き出した内容を、そのまま貼ってください。");
+    }
+  };
+  const doClear = () => {
+    setEntries([]); save([]); setConfirmDel(false); setShowOut(false); setShowIn(false);
+    setMsg("すべて消しました。まっさらです。"); setTab("in");
+  };
+  const n = deck.length;
+  const idx = n ? Math.min(cardIdx, n - 1) : 0;
+  const cur = n ? deck[idx] : null;
+  const openEntry = entries.find((e) => e.id === openId) || null;
+
+  const shuffle = () => {
+    if (n < 2) return;
+    let r; do { r = Math.floor(Math.random() * n); } while (r === idx);
+    setCardIdx(r);
+  };
+
+  /* フリックでめくる（スマホ対応） */
+  const touchRef = useRef({ x: 0, y: 0 });
+  const onTouchStart = (e) => {
+    const t = e.touches[0];
+    touchRef.current = { x: t.clientX, y: t.clientY };
+  };
+  const onTouchEnd = (e) => {
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchRef.current.x;
+    const dy = t.clientY - touchRef.current.y;
+    if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.3 && n > 1) {
+      setCardIdx(dx < 0 ? (idx + 1) % n : (idx - 1 + n) % n);
+    }
+  };
+
+  const TabBtn = ({ id, children }) => (
+    <button onClick={() => setTab(id)}
+      style={{ flex: 1, padding: "10px 2px", border: "none", cursor: "pointer", borderRadius: 999, fontFamily: "inherit", fontSize: 13.5, fontWeight: 700, background: tab === id ? C.ink : "transparent", color: tab === id ? C.bg : C.sub, transition: "all .25s", whiteSpace: "nowrap" }}>
+      {children}
+    </button>
+  );
+
+  const declSize = (t) => (!t ? 18 : t.length <= 14 ? 21 : t.length <= 36 ? 16.5 : t.length <= 80 ? 13.5 : 11.5);
+
+  /* ---------- カードの見た目（ポケカ比率 63:88） ---------- */
+  const CardFace = ({ e, dim = false }) => (
+    <div style={{
+      width: 240, height: 336, borderRadius: 16,
+      background: C.card,
+      border: `1px solid ${C.line}`,
+      boxShadow: dim ? "0 6px 18px rgba(74,64,56,0.08)" : "0 18px 40px rgba(74,64,56,0.14)",
+      padding: 9, display: "flex", flexDirection: "column",
+      backgroundImage: "linear-gradient(160deg, rgba(127,168,160,0.10), rgba(255,253,250,0) 40%), linear-gradient(340deg, rgba(217,163,98,0.08), rgba(255,253,250,0) 45%)",
+    }}>
+      {/* 内枠：トレカの額縁 */}
+      <div style={{
+        flex: 1, border: `1.5px solid ${C.line}`, borderRadius: 11,
+        display: "flex", flexDirection: "column", overflow: "hidden",
+        background: "rgba(255,255,255,0.4)",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 11px 0" }}>
+          <span style={{ fontSize: 10, letterSpacing: "0.22em", color: C.sub, fontWeight: 700 }}>
+            {e.day != null ? `DAY ${e.day}` : "———"}
+          </span>
+          <span style={{ fontSize: 15, color: e.star ? C.star : C.line }}>{e.star ? "★" : "☆"}</span>
+        </div>
+
+        {/* 縦書きの宣言 */}
+        <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", padding: "6px 8px" }}>
+          <div style={{
+            writingMode: "vertical-rl", maxHeight: 225,
+            fontSize: declSize(e.decl), fontWeight: 700, lineHeight: 2.15,
+            letterSpacing: "0.13em", whiteSpace: "pre-wrap", color: C.ink,
+          }}>
+            {toTate(e.decl) || "（宣言なしで閉じた日）"}
+          </div>
+        </div>
+
+        <div style={{ borderTop: `1px solid ${C.line}`, padding: "7px 11px 8px", display: "flex", justifyContent: "space-between", alignItems: "baseline", background: "rgba(250,246,240,0.7)" }}>
+          <span style={{ fontSize: 10.5, color: C.sub }}>{fmtDate(e.date)}</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: "'Zen Maru Gothic', sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap');
+        * { box-sizing: border-box; }
+        textarea:focus { outline: 2px solid ${C.nagi}; }
+        input[type=range] { accent-color: ${C.nagi}; }
+        @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+        @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+        @keyframes pop { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
+        .deckcard { transition: transform .55s cubic-bezier(.22,.8,.3,1), opacity .55s, filter .55s; position: absolute; left: 50%; }
+      `}</style>
+
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "26px 16px 80px" }}>
+        <header style={{ textAlign: "center", marginBottom: 20 }}>
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "0.12em" }}>めぐることば</h1>
+          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: C.sub, letterSpacing: "0.08em" }}>
+            —答えは循環の中に—
+          </p>
+        </header>
+
+        <nav style={{ display: "flex", gap: 4, background: C.card, border: `1px solid ${C.line}`, borderRadius: 999, padding: 5, marginBottom: 18 }}>
+          <TabBtn id="in">取り込み</TabBtn>
+          <TabBtn id="cards">ことばの輪</TabBtn>
+          <TabBtn id="keep">保存</TabBtn>
+        </nav>
+
+        {msg && (
+          <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "10px 14px", fontSize: 13, color: C.sub, marginBottom: 14, animation: "rise .4s ease" }}>{msg}</div>
+        )}
+
+        {/* ============ 取り込み ============ */}
+        {tab === "in" && (
+          <section style={{ animation: "rise .4s ease" }}>
+            {/* ドラッグ&ドロップ */}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); readFiles(e.dataTransfer.files); }}
+              onClick={() => fileRef.current && fileRef.current.click()}
+              style={{
+                border: `2px dashed ${dragOver ? C.nagi : C.line}`,
+                background: dragOver ? "rgba(127,168,160,0.08)" : C.card,
+                borderRadius: 18, padding: "30px 18px", textAlign: "center",
+                cursor: "pointer", transition: "all .2s", marginBottom: 16,
+              }}>
+              <div style={{ fontSize: 26, marginBottom: 8 }}>📂</div>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>Markdownファイルを、ここにドラッグ&ドロップ</div>
+              <div style={{ fontSize: 12, color: C.sub, marginTop: 6 }}>
+                何日ぶんまとめてでもOK。タップしてファイルを選ぶこともできます。
+              </div>
+              <input ref={fileRef} type="file" multiple accept=".md,.markdown,.txt,text/*" style={{ display: "none" }}
+                onChange={(e) => { readFiles(e.target.files); e.target.value = ""; }} />
+            </div>
+
+            <p style={{ fontSize: 12.5, color: C.sub, textAlign: "center", margin: "0 0 10px" }}>——— または、貼り付けで ———</p>
+            <textarea value={paste} onChange={(e) => setPaste(e.target.value)}
+              placeholder={"# AIジャーナリング｜2026-06-03｜…\n…\n> 今日の小さな宣言\n> 「…」"}
+              style={{ width: "100%", height: 150, borderRadius: 16, border: `1px solid ${C.line}`, background: C.card, padding: 14, fontSize: 13, fontFamily: "inherit", color: C.ink, resize: "vertical", lineHeight: 1.7 }} />
+            <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+              <button onClick={() => { mergeIn(paste, "貼り付け"); setPaste(""); }} disabled={!paste.trim()}
+                style={{ flex: 2, minWidth: 160, padding: "13px 0", borderRadius: 999, border: "none", background: paste.trim() ? C.nagi : C.line, color: "#fff", fontFamily: "inherit", fontSize: 15, fontWeight: 700, cursor: paste.trim() ? "pointer" : "default", letterSpacing: "0.1em" }}>
+                カードにする
+              </button>
+              <button onClick={loadSample}
+                style={{ flex: 1, minWidth: 120, padding: "13px 0", borderRadius: 999, border: `1px solid ${C.line}`, background: C.card, color: C.sub, fontFamily: "inherit", fontSize: 13, cursor: "pointer" }}>
+                サンプルを見る
+              </button>
+            </div>
+            {entries.length > 0 && (
+              <p style={{ marginTop: 18, fontSize: 12, color: C.sub }}>
+                データの書き出し・読み込み・全消去は「保存」タブにあります。
+              </p>
+            )}
+          </section>
+        )}
+
+        {/* ============ ことばの輪（デッキ） ============ */}
+        {tab === "cards" && (
+          <section style={{ animation: "rise .4s ease" }}>
+            {entries.length === 0 ? (
+              <Empty onGo={() => setTab("in")} />
+            ) : (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <button onClick={() => { setOnlyStar(!onlyStar); setCardIdx(0); }}
+                    style={{ border: `1px solid ${onlyStar ? C.star : C.line}`, background: onlyStar ? "#FBF3DD" : C.card, color: onlyStar ? "#9A7B1E" : C.sub, borderRadius: 999, padding: "6px 14px", fontSize: 12, fontFamily: "inherit", cursor: "pointer", fontWeight: 700 }}>
+                    ★ ベストの輪
+                  </button>
+                  <span style={{ fontSize: 12.5, color: C.sub }}>{n ? `${idx + 1} / ${n}枚` : "0枚"}</span>
+                  <button onClick={shuffle}
+                    style={{ border: `1px solid ${C.line}`, background: C.card, color: C.sub, borderRadius: 999, padding: "6px 14px", fontSize: 12, fontFamily: "inherit", cursor: "pointer", fontWeight: 700 }}>
+                    ⟳ めくる
+                  </button>
+                </div>
+
+                {/* 月の輪の切り替え（ひと月 ＝ ひと巡り） */}
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 14, marginBottom: 8 }}>
+                  {onlyStar ? (
+                    <span style={{ fontSize: 13.5, fontWeight: 700, color: "#9A7B1E", letterSpacing: "0.1em" }}>
+                      ★ ベストの輪（すべての月から）
+                    </span>
+                  ) : (
+                    <>
+                      <button onClick={() => moveMonth(-1)} disabled={months.indexOf(month) <= 0}
+                        style={{ border: "none", background: "none", color: months.indexOf(month) <= 0 ? C.line : C.sub, fontSize: 16, cursor: "pointer", fontFamily: "inherit", padding: "2px 8px" }}>‹</button>
+                      <span style={{ fontSize: 14.5, fontWeight: 700, letterSpacing: "0.14em", minWidth: 120, textAlign: "center" }}>
+                        {fmtMonth(month)}
+                      </span>
+                      <button onClick={() => moveMonth(1)} disabled={months.indexOf(month) >= months.length - 1}
+                        style={{ border: "none", background: "none", color: months.indexOf(month) >= months.length - 1 ? C.line : C.sub, fontSize: 16, cursor: "pointer", fontFamily: "inherit", padding: "2px 8px" }}>›</button>
+                    </>
+                  )}
+                </div>
+
+                {!cur ? (
+                  <div style={{ textAlign: "center", color: C.sub, padding: "50px 0", fontSize: 13.5, lineHeight: 2 }}>
+                    ★のついたカードは、まだありません。<br />「☆ ベストに選ぶ」で、ここに集まります。
+                  </div>
+                ) : (
+                  <>
+                    {/* 循環の輪：カードは輪の上に乗って、まわる（フリックでもめくれる） */}
+                    <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+                      style={{ position: "relative", height: 420, overflow: "hidden", touchAction: "pan-y" }}>
+                      {/* 輪の気配（カードが乗っている円を、うすく見せる） */}
+                      <div style={{
+                        position: "absolute", left: "50%", top: 24,
+                        width: (WHEEL_R + 190) * 2, height: (WHEEL_R + 190) * 2,
+                        transform: "translateX(-50%)",
+                        border: `1.5px dashed ${C.line}`, borderRadius: "50%",
+                        pointerEvents: "none", opacity: 0.9,
+                      }} />
+                      {deck.map((e, i) => {
+                        // 輪の上での位置：いちばん近い回り方（循環）
+                        let k = i - idx;
+                        if (k > n / 2) k -= n;
+                        if (k < -n / 2) k += n;
+                        if (Math.abs(k) > 3) return null;
+                        const a = Math.abs(k);
+                        const deg = k * WHEEL_STEP;
+                        const isCenter = k === 0;
+                        const OP = [1, 0.5, 0.22, 0.09];
+                        const SC = [1, 0.88, 0.8, 0.74];
+                        return (
+                          <div key={e.id} className="deckcard"
+                            onClick={() => (isCenter ? setOpenId(e.id) : setCardIdx(i))}
+                            title={isCenter ? "タップすると、この日の記録の全文がひらきます" : `${fmtDate(e.date)}へ`}
+                            style={{
+                              top: WHEEL_R + 40,
+                              transform: `translateX(-50%) rotate(${deg}deg) translateY(-${WHEEL_R}px) scale(${SC[a]})`,
+                              opacity: OP[a],
+                              filter: isCenter ? "none" : "saturate(.6)",
+                              zIndex: 4 - a, cursor: "pointer",
+                            }}>
+                            <CardFace e={e} dim={!isCenter} />
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* 操作列 */}
+                    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginTop: 14 }}>
+                      <button onClick={() => setCardIdx((idx - 1 + n) % n)}
+                        style={{ width: 46, height: 46, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.card, color: C.ink, fontSize: 18, cursor: "pointer" }}>‹</button>
+                      <button onClick={() => update(cur.id, { star: !cur.star })}
+                        style={{ padding: "10px 22px", borderRadius: 999, border: `1px solid ${cur.star ? C.star : C.line}`, background: cur.star ? "#FBF3DD" : C.card, color: cur.star ? "#9A7B1E" : C.sub, fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                        {cur.star ? "★ ベストの一枚" : "☆ ベストに選ぶ"}
+                      </button>
+                      <button onClick={() => setCardIdx((idx + 1) % n)}
+                        style={{ width: 46, height: 46, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.card, color: C.ink, fontSize: 18, cursor: "pointer" }}>›</button>
+                    </div>
+                    <p style={{ textAlign: "center", fontSize: 11.5, color: C.sub, marginTop: 12 }}>
+                      カードをタップすると、この日の記録がまるごとひらきます
+                    </p>
+                  </>
+                )}
+              </>
+            )}
+          </section>
+        )}
+
+        {/* ============ 保存 ============ */}
+        {tab === "keep" && (
+          <section style={{ animation: "rise .4s ease" }}>
+            <p style={{ fontSize: 13.5, lineHeight: 2, marginTop: 0 }}>
+              いまの輪は <b>{entries.length}枚</b>（{months.length}か月ぶん）。
+              月にいちど、バックアップをコピーしてメモアプリやObsidianに貼っておくと安心です。
+            </p>
+
+            <div style={{ display: "grid", gap: 10 }}>
+              {/* 書き出し */}
+              <button onClick={() => { setShowOut(!showOut); setShowIn(false); }} disabled={!entries.length}
+                style={{ padding: "15px 16px", borderRadius: 16, border: `1px solid ${showOut ? C.nagi : C.line}`, background: entries.length ? C.card : C.bg, color: entries.length ? C.ink : C.line, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: entries.length ? "pointer" : "default", textAlign: "left" }}>
+                📦 バックアップを書き出す
+                <div style={{ fontSize: 11.5, color: C.sub, fontWeight: 400, marginTop: 4 }}>全文・★・並びをまるごとコピーして、メモアプリやObsidianへ。</div>
+              </button>
+              {showOut && (
+                <div style={{ animation: "rise .3s ease" }}>
+                  <button onClick={copyBackup}
+                    style={{ width: "100%", padding: "13px 0", borderRadius: 999, border: "none", background: C.nagi, color: "#fff", fontFamily: "inherit", fontSize: 14.5, fontWeight: 700, cursor: "pointer", marginBottom: 8 }}>
+                    まるごとコピーする
+                  </button>
+                  <textarea ref={outRef} readOnly value={backupJson()}
+                    onFocus={(e) => e.target.select()}
+                    style={{ width: "100%", height: 110, borderRadius: 14, border: `1px solid ${C.line}`, background: C.card, padding: 12, fontSize: 10.5, fontFamily: "monospace", color: C.sub }} />
+                  <p style={{ fontSize: 11.5, color: C.sub, lineHeight: 1.8, margin: "6px 0 0" }}>
+                    貼り先のメモに「めぐることば バックアップ 2026-07-04」のような名前をつけておくと、あとで探しやすいです。
+                  </p>
+                </div>
+              )}
+
+              {/* 読み込み */}
+              <button onClick={() => { setShowIn(!showIn); setShowOut(false); }}
+                style={{ padding: "15px 16px", borderRadius: 16, border: `1px solid ${showIn ? C.nagi : C.line}`, background: C.card, color: C.ink, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>
+                📥 バックアップから復元する
+                <div style={{ fontSize: 11.5, color: C.sub, fontWeight: 400, marginTop: 4 }}>保存しておいたバックアップを貼り付けると、輪がまるごと戻ります。</div>
+              </button>
+              {showIn && (
+                <div style={{ animation: "rise .3s ease" }}>
+                  <textarea value={restoreText} onChange={(e) => setRestoreText(e.target.value)}
+                    placeholder='保存しておいたバックアップ（{"app":"meguru-kotoba",… で始まる内容）を、ここに貼り付けてください'
+                    style={{ width: "100%", height: 110, borderRadius: 14, border: `1px solid ${C.line}`, background: C.card, padding: 12, fontSize: 11, fontFamily: "monospace", color: C.ink }} />
+                  <button onClick={restoreFromText} disabled={!restoreText.trim()}
+                    style={{ width: "100%", padding: "13px 0", borderRadius: 999, border: "none", background: restoreText.trim() ? C.nagi : C.line, color: "#fff", fontFamily: "inherit", fontSize: 14.5, fontWeight: 700, cursor: restoreText.trim() ? "pointer" : "default", marginTop: 8 }}>
+                    この内容から復元する
+                  </button>
+                  <p style={{ fontSize: 11.5, color: C.sub, lineHeight: 1.8, margin: "6px 0 0" }}>
+                    ※ いまの輪は、貼り付けた内容にまるごと置き換わります。
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* あぶない操作は、いちばん下に、線を引いて */}
+            <div style={{ marginTop: 34, paddingTop: 18, borderTop: `1px dashed ${C.line}` }}>
+              <button onClick={() => setConfirmDel(true)} disabled={!entries.length}
+                style={{ background: "none", border: `1px solid ${entries.length ? "#E3B8B0" : C.line}`, color: entries.length ? "#B0655A" : C.line, borderRadius: 999, padding: "9px 20px", fontSize: 12.5, fontFamily: "inherit", cursor: entries.length ? "pointer" : "default" }}>
+                すべて消して、まっさらにする
+              </button>
+            </div>
+          </section>
+        )}
+
+      </div>
+
+      {/* ============ 全消しの確認（すぐには消しません） ============ */}
+      {confirmDel && (
+        <div onClick={() => setConfirmDel(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(74,64,56,0.45)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 18px" }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ width: "100%", maxWidth: 400, background: C.bg, borderRadius: 22, padding: "24px 22px", boxShadow: "0 24px 60px rgba(74,64,56,0.28)", animation: "pop .3s ease", fontFamily: "'Zen Maru Gothic', sans-serif", color: C.ink, textAlign: "center" }}>
+            <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.9, marginBottom: 8 }}>
+              本当に、すべて消しますか？
+            </div>
+            <p style={{ fontSize: 12.5, color: C.sub, lineHeight: 1.9, margin: "0 0 18px" }}>
+              {entries.length}枚のことばと記録が、すべて消えます。<br />
+              この操作は元に戻せません。<br />
+              バックアップは、書き出しましたか？
+            </p>
+            <div style={{ display: "grid", gap: 8 }}>
+              <button onClick={() => setConfirmDel(false)} autoFocus
+                style={{ padding: "13px 0", borderRadius: 999, border: "none", background: C.nagi, color: "#fff", fontFamily: "inherit", fontSize: 14.5, fontWeight: 700, cursor: "pointer" }}>
+                やっぱりやめる
+              </button>
+              <button onClick={doClear}
+                style={{ padding: "11px 0", borderRadius: 999, border: "1px solid #E3B8B0", background: "none", color: "#B0655A", fontFamily: "inherit", fontSize: 12.5, cursor: "pointer" }}>
+                消す
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============ その日の全文モーダル ============ */}
+      {openEntry && (
+        <div onClick={() => setOpenId(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(74,64,56,0.45)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 14px" }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%", maxWidth: 560, maxHeight: "82vh", overflowY: "auto",
+              background: C.bg, borderRadius: 24, padding: "18px 22px 30px",
+              boxShadow: "0 24px 60px rgba(74,64,56,0.28)",
+              animation: "pop .32s cubic-bezier(.2,.9,.3,1.15)",
+              fontFamily: "'Zen Maru Gothic', sans-serif", color: C.ink,
+            }}>
+            <div style={{ position: "sticky", top: 0, background: C.bg, paddingBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px dashed ${C.line}`, marginBottom: 12 }}>
+              <span style={{ fontSize: 12.5, color: C.sub }}>
+                {fmtDate(openEntry.date)}{openEntry.day != null && `　Day ${openEntry.day}`}　この日の記録
+              </span>
+              <button onClick={() => setOpenId(null)}
+                style={{ border: `1px solid ${C.line}`, background: C.card, color: C.sub, borderRadius: 999, padding: "5px 16px", fontSize: 12.5, fontFamily: "inherit", cursor: "pointer", fontWeight: 700 }}>
+                とじる
+              </button>
+            </div>
+            <MdView text={openEntry.raw} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Empty({ onGo }) {
+  return (
+    <div style={{ textAlign: "center", padding: "56px 20px", color: "#8A7E72" }}>
+      <div style={{ fontSize: 32, marginBottom: 12 }}>🕊</div>
+      <p style={{ fontSize: 14, lineHeight: 2 }}>まだ、なにもありません。<br />Markdownを取り込むと、ここに言葉が並びます。</p>
+      <button onClick={onGo}
+        style={{ marginTop: 10, padding: "11px 30px", borderRadius: 999, border: "none", background: "#7FA8A0", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+        取り込みへ
+      </button>
+    </div>
+  );
+}
+
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+</script>
+</body>
+</html>
