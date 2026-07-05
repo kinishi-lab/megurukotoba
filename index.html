@@ -381,7 +381,15 @@ ${date}
         @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
         @keyframes pop { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
         .deckcard { transition: transform .55s cubic-bezier(.22,.8,.3,1), opacity .55s, filter .55s; position: absolute; left: 50%; }
-      `), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 640, margin: "0 auto", padding: "26px 16px 80px" } }, /* @__PURE__ */ React.createElement("header", { style: { textAlign: "center", marginBottom: 20 } }, /* @__PURE__ */ React.createElement("h1", { style: { margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "0.12em" } }, "\u3081\u3050\u308B\u3053\u3068\u3070"), /* @__PURE__ */ React.createElement("p", { style: { margin: "8px 0 0", fontSize: 12.5, color: C.sub, letterSpacing: "0.08em" } }, "\u2014\u7B54\u3048\u306F\u5FAA\u74B0\u306E\u4E2D\u306B\u2014")), /* @__PURE__ */ React.createElement("nav", { style: { display: "flex", gap: 4, background: C.card, border: `1px solid ${C.line}`, borderRadius: 999, padding: 5, marginBottom: 18 } }, /* @__PURE__ */ React.createElement(TabBtn, { id: "in" }, "\u53D6\u308A\u8FBC\u307F"), /* @__PURE__ */ React.createElement(TabBtn, { id: "cards" }, "\u3053\u3068\u3070\u306E\u8F2A"), /* @__PURE__ */ React.createElement(TabBtn, { id: "keep" }, "\u4FDD\u5B58")), msg && /* @__PURE__ */ React.createElement("div", { style: { background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "10px 14px", fontSize: 13, color: C.sub, marginBottom: 14, animation: "rise .4s ease" } }, msg), tab === "in" && /* @__PURE__ */ React.createElement("section", { style: { animation: "rise .4s ease" } }, /* @__PURE__ */ React.createElement(
+      `), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 640, margin: "0 auto", padding: "26px 16px 80px" } }, /* @__PURE__ */ React.createElement("header", { style: { textAlign: "center", marginBottom: 20 } }, /* @__PURE__ */ React.createElement(
+      "img",
+      {
+        src: "icon-192.png",
+        alt: "",
+        "aria-hidden": "true",
+        style: { width: 46, height: 46, borderRadius: "50%", marginBottom: 8, opacity: 0.9 }
+      }
+    ), /* @__PURE__ */ React.createElement("h1", { style: { margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "0.12em" } }, "\u3081\u3050\u308B\u3053\u3068\u3070"), /* @__PURE__ */ React.createElement("p", { style: { margin: "8px 0 0", fontSize: 12.5, color: C.sub, letterSpacing: "0.08em" } }, "\u2014\u7B54\u3048\u306F\u5FAA\u74B0\u306E\u4E2D\u306B\u2014")), /* @__PURE__ */ React.createElement("nav", { style: { display: "flex", gap: 4, background: C.card, border: `1px solid ${C.line}`, borderRadius: 999, padding: 5, marginBottom: 18 } }, /* @__PURE__ */ React.createElement(TabBtn, { id: "in" }, "\u53D6\u308A\u8FBC\u307F"), /* @__PURE__ */ React.createElement(TabBtn, { id: "cards" }, "\u3053\u3068\u3070\u306E\u8F2A"), /* @__PURE__ */ React.createElement(TabBtn, { id: "keep" }, "\u4FDD\u5B58")), msg && /* @__PURE__ */ React.createElement("div", { style: { background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "10px 14px", fontSize: 13, color: C.sub, marginBottom: 14, animation: "rise .4s ease" } }, msg), tab === "in" && /* @__PURE__ */ React.createElement("section", { style: { animation: "rise .4s ease" } }, /* @__PURE__ */ React.createElement(
       "div",
       {
         onDragOver: (e) => {
@@ -682,7 +690,15 @@ ${date}
     ));
   }
   function Empty({ onGo }) {
-    return /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "56px 20px", color: "#8A7E72" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "\u{1F54A}"), /* @__PURE__ */ React.createElement("p", { style: { fontSize: 14, lineHeight: 2 } }, "\u307E\u3060\u3001\u306A\u306B\u3082\u3042\u308A\u307E\u305B\u3093\u3002", /* @__PURE__ */ React.createElement("br", null), "Markdown\u3092\u53D6\u308A\u8FBC\u3080\u3068\u3001\u3053\u3053\u306B\u8A00\u8449\u304C\u4E26\u3073\u307E\u3059\u3002"), /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "56px 20px", color: "#8A7E72" } }, /* @__PURE__ */ React.createElement(
+      "img",
+      {
+        src: "icon-192.png",
+        alt: "",
+        "aria-hidden": "true",
+        style: { width: 64, height: 64, borderRadius: "50%", marginBottom: 12, opacity: 0.85 }
+      }
+    ), /* @__PURE__ */ React.createElement("p", { style: { fontSize: 14, lineHeight: 2 } }, "\u307E\u3060\u3001\u306A\u306B\u3082\u3042\u308A\u307E\u305B\u3093\u3002", /* @__PURE__ */ React.createElement("br", null), "Markdown\u3092\u53D6\u308A\u8FBC\u3080\u3068\u3001\u3053\u3053\u306B\u8A00\u8449\u304C\u4E26\u3073\u307E\u3059\u3002"), /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: onGo,
